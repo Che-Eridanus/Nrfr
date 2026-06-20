@@ -1,5 +1,6 @@
 package com.github.nrfr
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
@@ -13,6 +14,7 @@ import com.github.nrfr.ui.screens.AboutScreen
 import com.github.nrfr.ui.screens.MainScreen
 import com.github.nrfr.ui.screens.ShizukuNotReadyScreen
 import com.github.nrfr.ui.theme.NrfrTheme
+import com.github.nrfr.manager.CarrierConfigBrokerContract
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.Shizuku
 
@@ -30,6 +32,7 @@ class MainActivity : ComponentActivity() {
 
         // 检查 Shizuku 状态
         checkShizukuStatus()
+        handleBrokerResult(intent)
 
         // 添加 Shizuku 权限监听器
         Shizuku.addRequestPermissionResultListener { _, grantResult ->
@@ -57,6 +60,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleBrokerResult(intent)
+    }
+
     private fun checkShizukuStatus() {
         isShizukuReady = if (Shizuku.getBinder() == null) {
             Toast.makeText(this, "请先安装并启用 Shizuku", Toast.LENGTH_LONG).show()
@@ -68,6 +77,19 @@ class MainActivity : ComponentActivity() {
             }
             hasPermission
         }
+    }
+
+    private fun handleBrokerResult(intent: Intent?) {
+        val result = intent?.getStringExtra(CarrierConfigBrokerContract.EXTRA_BROKER_RESULT) ?: return
+        val message = intent.getStringExtra(CarrierConfigBrokerContract.EXTRA_BROKER_MESSAGE)
+        val fallback = if (result == CarrierConfigBrokerContract.RESULT_SUCCESS) {
+            "设置已保存"
+        } else {
+            "保存失败"
+        }
+        Toast.makeText(this, message ?: fallback, Toast.LENGTH_LONG).show()
+        intent.removeExtra(CarrierConfigBrokerContract.EXTRA_BROKER_RESULT)
+        intent.removeExtra(CarrierConfigBrokerContract.EXTRA_BROKER_MESSAGE)
     }
 
     override fun onDestroy() {

@@ -2,6 +2,7 @@ package com.github.nrfr.manager
 
 import android.content.Context
 import android.os.Build
+import android.os.Bundle
 import android.os.PersistableBundle
 import android.telephony.CarrierConfigManager
 import android.telephony.SubscriptionManager
@@ -10,6 +11,7 @@ import android.telephony.TelephonyManager
 import com.android.internal.telephony.ICarrierConfigLoader
 import com.github.nrfr.model.SimCardInfo
 import rikka.shizuku.ShizukuBinderWrapper
+import java.util.concurrent.TimeUnit
 
 object CarrierConfigManager {
     fun getSimCards(context: Context): List<SimCardInfo> {
@@ -84,7 +86,7 @@ object CarrierConfigManager {
         }
     }
 
-    fun setCarrierConfig(subId: Int, countryCode: String?, carrierName: String? = null) {
+    fun setCarrierConfig(context: Context, subId: Int, countryCode: String?, carrierName: String? = null) {
         val bundle = PersistableBundle()
 
         // 设置国家码
@@ -101,14 +103,35 @@ object CarrierConfigManager {
             bundle.putString(CarrierConfigManager.KEY_CARRIER_NAME_STRING, carrierName)
         }
 
-        overrideCarrierConfig(subId, bundle)
+        overrideCarrierConfig(context, subId, bundle)
     }
 
-    fun resetCarrierConfig(subId: Int) {
-        overrideCarrierConfig(subId, null)
+    fun resetCarrierConfig(context: Context, subId: Int) {
+        overrideCarrierConfig(context, subId, null)
     }
 
-    private fun overrideCarrierConfig(subId: Int, bundle: PersistableBundle?) {
+    private fun overrideCarrierConfig(context: Context, subId: Int, bundle: PersistableBundle?) {
+        if (CarrierConfigOverrideStrategy.shouldUseBroker(Build.VERSION.SDK_INT, Build.VERSION.SECURITY_PATCH)) {
+            overrideCarrierConfigUsingBroker(context, subId, bundle)
+        } else {
+            overrideCarrierConfigDirectly(subId, bundle)
+        }
+    }
+
+    private fun overrideCarrierConfigUsingBroker(context: Context, subId: Int, bundle: PersistableBundle?) {
+        val arguments = Bundle().apply {
+            putInt(CarrierConfigBrokerContract.ARG_SUB_ID, subId)
+            putString(CarrierConfigBrokerContract.ARG_PACKAGE_NAME, context.packageName)
+            if (bundle == null) {
+                putBoolean(CarrierConfigBrokerContract.ARG_CLEAR, true)
+            } else {
+                putParcelable(CarrierConfigBrokerContract.ARG_OVERRIDES, bundle)
+            }
+        }
+        CarrierConfigBrokerUserServiceClient.start(context, arguments)
+    }
+
+    private fun overrideCarrierConfigDirectly(subId: Int, bundle: PersistableBundle?) {
         val carrierConfigLoader = ICarrierConfigLoader.Stub.asInterface(
             ShizukuBinderWrapper(
                 TelephonyFrameworkInitializer
@@ -118,5 +141,33 @@ object CarrierConfigManager {
             )
         )
         carrierConfigLoader.overrideConfig(subId, bundle, true)
+        awaitOverrideVisible(subId, bundle)
     }
+
+    private fun awaitOverrideVisible(subId: Int, expected: PersistableBundle?) {
+        if (expected == null || expected.isEmpty) return
+
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+        do {
+            val config = getConfigBundleForSubId(subId)
+            if (config != null && expected.keySet().all { key -> config.get(key) == expected.get(key) }) {
+                return
+            }
+            Thread.sleep(100)
+        } while (System.nanoTime() < deadline)
+
+        error("系统未返回新的运营商配置")
+    }
+
+    private fun getConfigBundleForSubId(subId: Int): PersistableBundle? {
+        return ICarrierConfigLoader.Stub.asInterface(
+            ShizukuBinderWrapper(
+                TelephonyFrameworkInitializer
+                    .getTelephonyServiceManager()
+                    .carrierConfigServiceRegisterer
+                    .get()
+            )
+        ).getConfigForSubId(subId, "com.github.nrfr")
+    }
+
 }
