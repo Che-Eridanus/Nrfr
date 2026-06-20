@@ -15,6 +15,7 @@ import com.github.nrfr.ui.screens.MainScreen
 import com.github.nrfr.ui.screens.ShizukuNotReadyScreen
 import com.github.nrfr.ui.theme.NrfrTheme
 import com.github.nrfr.manager.CarrierConfigBrokerContract
+import com.github.nrfr.manager.CarrierConfigBrokerMessages
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.Shizuku
 
@@ -82,12 +83,7 @@ class MainActivity : ComponentActivity() {
     private fun handleBrokerResult(intent: Intent?) {
         val result = intent?.getStringExtra(CarrierConfigBrokerContract.EXTRA_BROKER_RESULT) ?: return
         val message = intent.getStringExtra(CarrierConfigBrokerContract.EXTRA_BROKER_MESSAGE)
-        val fallback = if (result == CarrierConfigBrokerContract.RESULT_SUCCESS) {
-            "设置已保存"
-        } else {
-            "保存失败"
-        }
-        Toast.makeText(this, message ?: fallback, Toast.LENGTH_LONG).show()
+        Toast.makeText(this, CarrierConfigBrokerMessages.toast(result, message), Toast.LENGTH_LONG).show()
         intent.removeExtra(CarrierConfigBrokerContract.EXTRA_BROKER_RESULT)
         intent.removeExtra(CarrierConfigBrokerContract.EXTRA_BROKER_MESSAGE)
     }

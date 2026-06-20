@@ -63,5 +63,5 @@ object CarrierConfigBrokerUserServiceClient {
 }
 
 class CarrierConfigBrokerRestartingException : IllegalStateException(
-    "正在通过 Android 16 兼容模式保存，完成后会自动回到应用"
+    "正在保存，完成后会自动回到应用"
 )

@@ -2,7 +2,7 @@ package com.github.nrfr.manager
 
 object CarrierConfigBrokerContract {
     const val USER_SERVICE_TAG = "carrier_config_broker"
-    const val USER_SERVICE_VERSION = 1
+    const val USER_SERVICE_VERSION = 2
     const val USER_SERVICE_TRANSACTION_APPLY_CONFIG = 1
     const val ARG_SUB_ID = "com.github.nrfr.extra.SUB_ID"
     const val ARG_CLEAR = "com.github.nrfr.extra.CLEAR"

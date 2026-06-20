@@ -38,18 +38,22 @@ class CarrierConfigBrokerUserService() : Binder() {
         val packageName = arguments.getString(CarrierConfigBrokerContract.ARG_PACKAGE_NAME)
             ?: DEFAULT_PACKAGE_NAME
         val outcome = runCatching {
-            // Give the foreground app a short moment to show its "saving" toast before
-            // Android stops the package to start SDK sandbox instrumentation.
-            Thread.sleep(800)
             val request = CarrierConfigBrokerRequest.from(arguments)
-            runSandboxInstrumentation(packageName, arguments)
-            awaitOverrideVisible(packageName, request.subId, request.overrides)
+            CarrierConfigBrokerApplyFlow.run(
+                applyConfig = { runSandboxInstrumentation(packageName, arguments) },
+                verifyConfig = { awaitOverrideVisible(packageName, request.subId, request.overrides) }
+            )
+        }.getOrElse {
+            CarrierConfigBrokerOutcome(
+                success = false,
+                message = CarrierConfigBrokerMessages.brokerResult(false, it.message)
+            )
         }
 
-        val success = outcome.isSuccess
-        val message = outcome.exceptionOrNull()?.message
-            ?: if (success) "设置已保存" else "保存失败"
-        relaunchApp(packageName, success, message)
+        outcome.verificationError?.let {
+            Log.w(TAG, "Carrier config was written but verification failed", it)
+        }
+        relaunchApp(packageName, outcome.success, outcome.message)
     }
 
     private fun runSandboxInstrumentation(packageName: String, arguments: Bundle) {
@@ -96,24 +100,9 @@ class CarrierConfigBrokerUserService() : Binder() {
     }
 
     private fun relaunchApp(packageName: String, success: Boolean, message: String) {
-        val result = if (success) {
-            CarrierConfigBrokerContract.RESULT_SUCCESS
-        } else {
-            CarrierConfigBrokerContract.RESULT_FAILURE
-        }
         runCatching {
             val process = ProcessBuilder(
-                "/system/bin/am",
-                "start",
-                "-n",
-                "$packageName/.MainActivity",
-                "--activity-clear-top",
-                "--es",
-                CarrierConfigBrokerContract.EXTRA_BROKER_RESULT,
-                result,
-                "--es",
-                CarrierConfigBrokerContract.EXTRA_BROKER_MESSAGE,
-                message
+                CarrierConfigBrokerRelaunchCommand.build(packageName, success, message)
             ).redirectErrorStream(true).start()
             process.waitFor(5, TimeUnit.SECONDS)
         }.onFailure {
